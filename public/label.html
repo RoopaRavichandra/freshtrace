@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreshTrace label</title><link rel="stylesheet" href="/style.css">
+<style>.lab{width:8cm;margin:16px auto;border:2px solid var(--g);border-radius:12px;padding:12px;text-align:center;background:#fff}
+.lab img{width:5.5cm;height:5.5cm}.lab h3{margin:4px 0}.lab p{margin:2px 0;font-size:13px}.cut{font-size:11px;color:#888}</style></head><body>
+<header class="top"><a href="/">🌱 FreshTrace</a><small>Print label</small></header>
+<main><div id="lab" class="lab"><p>Loading…</p></div>
+<p style="text-align:center" class="noprint"><button onclick="print()">🖨️ Print</button> <small>Stick on the crate or bag. Laminate or use clear tape to protect it.</small></p></main>
+<script src="/app.js"></script>
+<script>
+const id = decodeURIComponent(location.pathname.split('/').pop());
+api('/api/batches/' + encodeURIComponent(id)).then(d => {
+  $('#lab').innerHTML = `<h3>🌱 FreshTrace</h3><img src="/api/qr/${encodeURIComponent(d.batch_id)}.svg" alt="QR code">
+  <h3>${esc(d.crop_type)} · Grade ${esc(d.quality_grade)}</h3><p><b>${esc(d.batch_id)}</b></p>
+  <p>Farm ${esc(d.farm.farmer_id)} · Harvested ${fmt(d.harvest_datetime)}</p><p><b>Scan to see the journey</b></p>`;
+}).catch(e => $('#lab').textContent = e.message);
+</script></body></html>

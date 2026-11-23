@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreshTrace – Farmer dashboard</title><link rel="stylesheet" href="/style.css"></head><body>
+<header class="top"><a href="/">🌱 FreshTrace</a><small>Farmer dashboard</small></header>
+<main>
+<div class="card"><h2>Where did my produce go?</h2>
+<div class="row"><div><label>Farmer ID</label><input id="fid" placeholder="FARM-0452"></div><div><label>Farmer key (6 digits)</label><input id="key" inputmode="numeric"></div></div>
+<p></p><button id="go">Show my batches</button><div id="msg" class="msg hide"></div></div>
+<div id="out" class="hide">
+<div class="tiles" id="tot"></div>
+<div class="card"><h2>My batches</h2><div class="scroll"><table><thead><tr><th>Batch</th><th>Crop</th><th>Kg</th><th>Where it went</th><th>Mandi ₹/kg</th><th>Shop ₹/kg</th><th>Fresh</th><th>Scans</th><th>Rating</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+</div></main>
+<script src="/app.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+$('#fid').value = q.get('id') || sessionStorage.getItem('fid') || '';
+$('#key').value = sessionStorage.getItem('fkey') || '';
+$('#go').onclick = async () => {
+  const id = $('#fid').value.trim().toUpperCase();
+  try { const d = await api('/api/farmer/' + encodeURIComponent(id), { headers: { 'x-farmer-key': $('#key').value.trim() } });
+    sessionStorage.setItem('fid', id); sessionStorage.setItem('fkey', $('#key').value.trim());
+    $('#msg').classList.add('hide'); $('#out').classList.remove('hide'); const t = d.totals;
+    $('#tot').innerHTML = [[t.batches, 'batches'], [Math.round(t.kg) + ' kg', 'produce tracked'], [t.scans, 'shopper scans'], [t.avg_rating ?? '–', 'avg shopper rating']]
+      .map(([a, b]) => `<div class="tile"><b>${esc(a)}</b><span>${b}</span></div>`).join('');
+    $('#rows').innerHTML = d.batches.length ? d.batches.map(b => `<tr><td>${esc(b.batch_id)}</td><td>${esc(b.crop_type)}</td><td>${b.quantity_kg}</td>
+      <td>${b.mandi_id ? '🏪 ' + esc(b.mandi_id) : '<i>not at mandi yet</i>'}${b.retailer_id ? '<br>🛒 ' + esc(b.retailer_id) : ''}</td>
+      <td>${b.auction_price_per_kg ?? '–'}</td><td>${b.shelf_price_per_kg ?? '–'}</td><td>${b.freshness_score}</td><td>${b.scans}</td><td>${b.avg_rating ?? '–'}</td></tr>`).join('')
+      : '<tr><td colspan="9">No batches yet.</td></tr>';
+  } catch (e) { $('#out').classList.add('hide'); say($('#msg'), e.message, true); }
+};
+if ($('#fid').value && $('#key').value) $('#go').click();
+</script></body></html>

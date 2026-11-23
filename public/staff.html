@@ -1,0 +1,114 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreshTrace – Staff</title><link rel="stylesheet" href="/style.css"></head><body>
+<header class="top"><a href="/">🌱 FreshTrace</a><small>Staff</small></header>
+<main>
+<div id="gate" class="card"><h2>Staff PIN</h2><label for="pin">Enter the PIN given by your team</label>
+<input id="pin" type="password" inputmode="numeric" autocomplete="off"><p></p><button id="go">Continue</button><div id="gmsg" class="msg hide"></div></div>
+
+<div id="app" class="hide">
+<div class="tabs" id="tabs"><button data-t="farm" class="on">1 Farm</button><button data-t="mandi">2 Mandi</button><button data-t="retail">3 Shop</button><button data-t="data">Data</button></div>
+
+<section id="t-farm" class="card"><h2>Register a new batch</h2>
+<div class="row"><div><label>Farmer ID</label><input id="f_farmer" placeholder="FARM-0452"></div>
+<div><label>Crop</label><select id="f_crop"></select></div></div>
+<div class="row"><div><label>Quantity (kg)</label><input id="f_qty" type="number" step="0.1" min="0.1"></div>
+<div><label>Quality grade</label><select id="f_grade"><option>A</option><option>B</option><option>C</option></select></div></div>
+<label>Harvest date and time</label><input id="f_time" type="datetime-local">
+<div class="row"><div><label>Farm latitude</label><input id="f_lat" inputmode="decimal"></div><div><label>Farm longitude</label><input id="f_lng" inputmode="decimal"></div></div>
+<p><button class="alt" id="f_gps" type="button">📍 Use my location</button></p>
+<button id="f_go">Create batch and QR</button><div id="f_msg" class="msg hide"></div>
+<div id="f_out" class="hide"><img id="f_qr" class="qr" alt="QR code"><p style="text-align:center"><b id="f_id"></b></p>
+<p>Farmer key (give it to the farmer for the dashboard): <b id="f_key"></b></p>
+<a id="f_label" class="btn" target="_blank">🖨️ Print label</a></div></section>
+
+<section id="t-mandi" class="card hide"><h2>Record arrival at mandi</h2>
+<label>Batch ID</label><div class="row" style="grid-template-columns:1fr auto"><input id="m_batch" placeholder="BATCH-20260901-01"><button class="alt scanbtn" data-for="m_batch" type="button">📷 Scan</button></div>
+<div class="row"><div><label>Mandi ID</label><input id="m_id" placeholder="MANDI-014"></div><div><label>Transport / truck ID</label><input id="m_tr" placeholder="TRK-2291"></div></div>
+<label>Arrival time</label><input id="m_time" type="datetime-local">
+<div class="row"><div><label>Auction price (₹/kg)</label><input id="m_price" type="number" step="0.01"></div><div><label>Quality check score (0–100)</label><input id="m_q" type="number" min="0" max="100"></div></div>
+<p></p><button id="m_go">Save mandi stop</button><div id="m_msg" class="msg hide"></div></section>
+
+<section id="t-retail" class="card hide"><h2>Record stock received at shop</h2>
+<label>Batch ID</label><div class="row" style="grid-template-columns:1fr auto"><input id="r_batch"><button class="alt scanbtn" data-for="r_batch" type="button">📷 Scan</button></div>
+<div class="row"><div><label>Retailer ID</label><input id="r_id" placeholder="RET-337"></div><div><label>Storage</label><select id="r_store"><option>Ambient</option><option>Cold</option></select></div></div>
+<label>Received time</label><input id="r_time" type="datetime-local">
+<label>Shelf price (₹/kg)</label><input id="r_price" type="number" step="0.01">
+<p></p><button id="r_go">Save shop stop</button><div id="r_msg" class="msg hide"></div></section>
+
+<section id="t-data" class="card hide"><h2>Recent batches</h2><p><button class="alt" id="csv">⬇ Download all data (CSV)</button></p>
+<div class="scroll"><table><thead><tr><th>Batch</th><th>Farmer</th><th>Crop</th><th>Stops</th><th>Scans</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
+
+<div id="cam" class="card hide"><video id="vid" playsinline muted></video><p><button class="alt" id="camx">Close camera</button></p></div>
+</div>
+</main>
+<script src="/app.js"></script>
+<script>
+let PIN = sessionStorage.getItem('pin') || '';
+const H = () => ({ 'x-staff-pin': PIN });
+const tabs = ['farm', 'mandi', 'retail', 'data'];
+function show(t) { tabs.forEach(x => $('#t-' + x).classList.toggle('hide', x !== t));
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); if (t === 'data') load(); }
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => show(b.dataset.t));
+
+async function enter() {
+  try { await api('/api/auth', { method: 'POST', headers: H() }); sessionStorage.setItem('pin', PIN);
+    $('#gate').classList.add('hide'); $('#app').classList.remove('hide'); init(); }
+  catch (e) { say($('#gmsg'), e.message, true); }
+}
+$('#go').onclick = () => { PIN = $('#pin').value; enter(); };
+$('#pin').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#go').click(); });
+if (PIN) enter();
+
+function init() {
+  api('/api/crops').then(c => $('#f_crop').innerHTML = c.map(x => `<option>${esc(x)}</option>`).join(''));
+  ['f_time', 'm_time', 'r_time'].forEach(i => $('#' + i).value = localNow());
+  const b = new URLSearchParams(location.search).get('batch');
+  if (b) { $('#m_batch').value = $('#r_batch').value = b; show('mandi'); }
+}
+$('#f_gps').onclick = () => navigator.geolocation ? navigator.geolocation.getCurrentPosition(
+  p => { $('#f_lat').value = p.coords.latitude.toFixed(5); $('#f_lng').value = p.coords.longitude.toFixed(5); },
+  () => say($('#f_msg'), 'Could not get location. Type it in instead.', true)) : say($('#f_msg'), 'Location not supported', true);
+
+$('#f_go').onclick = async () => {
+  try { const r = await api('/api/batches', { method: 'POST', headers: H(), body: {
+      farmer_id: $('#f_farmer').value, crop_type: $('#f_crop').value, quantity_kg: $('#f_qty').value, quality_grade: $('#f_grade').value,
+      harvest_datetime: toISO($('#f_time').value), farm_lat: $('#f_lat').value, farm_lng: $('#f_lng').value } });
+    say($('#f_msg'), 'Batch created ✔'); $('#f_qr').src = r.qr; $('#f_id').textContent = r.batch_id; $('#f_key').textContent = r.farmer_key;
+    $('#f_label').href = r.label; $('#f_out').classList.remove('hide'); $('#m_batch').value = $('#r_batch').value = r.batch_id;
+  } catch (e) { say($('#f_msg'), e.message, true); }
+};
+$('#m_go').onclick = async () => {
+  try { await api(`/api/batches/${encodeURIComponent($('#m_batch').value.trim())}/mandi`, { method: 'PUT', headers: H(), body: {
+      mandi_id: $('#m_id').value, transport_id: $('#m_tr').value, arrival_timestamp: toISO($('#m_time').value),
+      auction_price_per_kg: $('#m_price').value, quality_check_score: $('#m_q').value } });
+    say($('#m_msg'), 'Mandi stop saved ✔'); } catch (e) { say($('#m_msg'), e.message, true); }
+};
+$('#r_go').onclick = async () => {
+  try { await api(`/api/batches/${encodeURIComponent($('#r_batch').value.trim())}/retailer`, { method: 'PUT', headers: H(), body: {
+      retailer_id: $('#r_id').value, storage_condition: $('#r_store').value, received_timestamp: toISO($('#r_time').value),
+      shelf_price_per_kg: $('#r_price').value } });
+    say($('#r_msg'), 'Shop stop saved ✔'); } catch (e) { say($('#r_msg'), e.message, true); }
+};
+async function load() {
+  const rows = await api('/api/batches', { headers: H() });
+  $('#rows').innerHTML = rows.map(r => `<tr><td>${esc(r.batch_id)}</td><td>${esc(r.farmer_id)}</td><td>${esc(r.crop_type)}</td>
+    <td>🌾${r.at_mandi ? '→🏪' : ''}${r.at_retailer ? '→🛒' : ''}</td><td>${r.scans}</td>
+    <td><a href="/label/${encodeURIComponent(r.batch_id)}" target="_blank">label</a></td></tr>`).join('');
+}
+$('#csv').onclick = async () => { const b = await api('/api/export.csv', { headers: H() });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'freshtrace_export.csv'; a.click(); };
+
+// Camera QR scan (Chrome/Android). Other browsers: just type the batch ID.
+let stream, timer;
+if (!('BarcodeDetector' in window)) document.querySelectorAll('.scanbtn').forEach(b => b.classList.add('hide'));
+document.querySelectorAll('.scanbtn').forEach(btn => btn.onclick = async () => {
+  try { const det = new BarcodeDetector({ formats: ['qr_code'] });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    $('#vid').srcObject = stream; await $('#vid').play(); $('#cam').classList.remove('hide');
+    timer = setInterval(async () => { const c = await det.detect($('#vid')).catch(() => []);
+      const m = c[0] && c[0].rawValue.match(/BATCH-[A-Z0-9-]+/);
+      if (m) { $('#' + btn.dataset.for).value = m[0]; stop(); } }, 400);
+  } catch (e) { alert('Camera not available. Type the batch ID instead.'); } });
+function stop() { clearInterval(timer); stream && stream.getTracks().forEach(t => t.stop()); $('#cam').classList.add('hide'); }
+$('#camx').onclick = stop;
+</script></body></html>

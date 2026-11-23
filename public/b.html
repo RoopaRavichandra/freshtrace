@@ -1,0 +1,40 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreshTrace – Your vegetable’s journey</title><link rel="stylesheet" href="/style.css"></head><body>
+<header class="top"><a href="/">🌱 FreshTrace</a><small>Your vegetable’s journey</small></header>
+<main><div id="out"><p>Loading…</p></div></main>
+<script src="/app.js"></script>
+<script>
+const id = decodeURIComponent(location.pathname.split('/').pop());
+const stage = (icon, title, line, done) => `<li class="${done ? '' : 'pending'}"><b>${icon} ${esc(title)}</b><small>${line}</small></li>`;
+(async () => {
+  try {
+    const d = await api(`/api/batches/${encodeURIComponent(id)}/scan`, { method: 'POST' });
+    const m = d.metrics, c = m.freshness_score >= 60 ? '#1f7a3d' : m.freshness_score >= 40 ? '#e0a100' : '#c0392b';
+    const f = d.farm, maps = f.lat != null ? `https://www.google.com/maps?q=${f.lat},${f.lng}` : null;
+    const hrs = (a, b) => { const h = Math.round((new Date(b) - new Date(a)) / 36e5); return h < 1 ? 'under 1 hour' : h + ' h'; };
+    $('#out').innerHTML = `
+    <h1>${esc(d.crop_type)} <span class="tag">Grade ${esc(d.quality_grade)}</span></h1>
+    <div class="card" style="text-align:center"><div class="gauge" style="--p:${m.freshness_score};--c:${c}"><div><b>${m.freshness_score}</b><span>${esc(m.freshness_label)}</span></div></div>
+      <small>Freshness score out of 100</small></div>
+    <div class="tiles">
+      <div class="tile"><b>${m.days_since_harvest}</b><span>days since harvest</span></div>
+      <div class="tile"><b>${m.handler_count}</b><span>handlers (farm, mandi, shop)</span></div>
+      <div class="tile"><b>${esc(f.farmer_id)}</b><span>farm origin ${maps ? `· <a href="${maps}" target="_blank" rel="noopener">map</a>` : ''}</span></div>
+      <div class="tile"><b>${d.retailer && d.retailer.shelf_price_per_kg != null ? '₹' + d.retailer.shelf_price_per_kg : '–'}</b><span>shop price per kg</span></div>
+    </div>
+    <div class="card"><h2>Journey</h2><ul class="tl">
+      ${stage('🌾', 'Harvested at farm ' + f.farmer_id, fmt(d.harvest_datetime), true)}
+      ${stage('🏪', d.mandi ? 'Reached mandi ' + d.mandi.mandi_id : 'Mandi', d.mandi ? fmt(d.mandi.arrival_timestamp) + ' · ' + hrs(d.harvest_datetime, d.mandi.arrival_timestamp) + ' after harvest' + (d.mandi.transport_id ? ' · truck ' + esc(d.mandi.transport_id) : '') : 'Not recorded yet', !!d.mandi)}
+      ${stage('🛒', d.retailer ? 'Received at shop ' + d.retailer.retailer_id : 'Shop', d.retailer ? fmt(d.retailer.received_timestamp) + ' · stored ' + esc(d.retailer.storage_condition).toLowerCase() + (d.retailer.shelf_life_days != null ? ' · about ' + d.retailer.shelf_life_days + ' days shelf life when received' : '') : 'Not recorded yet', !!d.retailer)}
+      ${stage('🏠', 'You scanned this pack', fmt(new Date().toISOString()), true)}
+    </ul></div>
+    <div class="card" style="text-align:center"><h2>How is it?</h2><div class="stars" id="stars"></div><div id="fb" class="msg hide"></div></div>
+    <p style="text-align:center"><small>Batch ${esc(d.batch_id)} · <a href="/staff?batch=${encodeURIComponent(d.batch_id)}">Staff update</a></small></p>`;
+    const st = $('#stars');
+    for (let i = 1; i <= 5; i++) { const b = document.createElement('button'); b.textContent = '★'; b.setAttribute('aria-label', i + ' stars');
+      b.onclick = async () => { try { await api(`/api/scans/${d.scan_id}/feedback`, { method: 'POST', body: { rating: i } });
+          [...st.children].forEach((x, j) => x.classList.toggle('on', j < i)); say($('#fb'), 'Thanks for your rating!'); } catch (e) { say($('#fb'), e.message, true); } };
+      st.appendChild(b); }
+  } catch (e) { $('#out').innerHTML = `<div class="card"><h2>Batch not found</h2><p>${esc(e.message)}. Check the QR code and try again.</p></div>`; }
+})();
+</script></body></html>
